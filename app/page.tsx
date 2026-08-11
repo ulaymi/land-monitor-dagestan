@@ -427,21 +427,40 @@ export default function Home() {
           </div>
 
           <div className="timeline">
-            <div>
+            <div className="timeline-months">
               <span>Апрель</span>
               <span>Май</span>
               <span>Июнь</span>
               <span>Июль</span>
             </div>
-            <input
-              aria-label="Опорная дата мозаики"
-              defaultValue="100"
-              id="timeline-range"
-              max="100"
-              min="0"
-              type="range"
-            />
-            <strong id="timeline-date">Мозаика по 30 июля 2026</strong>
+            <div className="timeline-controls">
+              <label className="timeline-bound">
+                <span>Начало</span>
+                <input
+                  aria-label="Левая граница периода мозаики"
+                  defaultValue="0"
+                  id="timeline-start-range"
+                  max="100"
+                  min="0"
+                  type="range"
+                />
+              </label>
+              <label className="timeline-bound">
+                <span>Конец</span>
+                <input
+                  aria-label="Правая граница периода мозаики"
+                  defaultValue="100"
+                  id="timeline-end-range"
+                  max="100"
+                  min="0"
+                  type="range"
+                />
+              </label>
+            </div>
+            <div className="timeline-summary">
+              <small>Окно мозаики</small>
+              <strong id="timeline-date">1 апреля — 30 июля 2026</strong>
+            </div>
           </div>
         </section>
 

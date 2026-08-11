@@ -35,10 +35,11 @@ test("renders the LandMonitor dashboard", async () => {
   assert.match(html, /Реальные спутниковые данные/);
   assert.match(html, /Спутник · Sentinel-2 RGB/);
   assert.match(html, /Покрытие рассчитывается/);
-  assert.match(html, /Мозаика по 30 июля 2026/);
+  assert.match(html, /1 апреля — 30 июля 2026/);
   assert.match(html, /satellite-data\.js/);
   assert.match(html, /territory-select/);
-  assert.match(html, /timeline-range/);
+  assert.match(html, /timeline-start-range/);
+  assert.match(html, /timeline-end-range/);
   assert.match(html, /Ногайский район/);
   assert.match(html, /Google Earth/);
   assert.match(html, /download-earth-kml/);
@@ -89,6 +90,7 @@ test("ships project metadata and social preview", async () => {
   assert.doesNotMatch(satelliteData, /selectTerritory\(feature/);
   assert.doesNotMatch(satelliteData, /satellite-map-label/);
   assert.match(page, /defaultValue="100"/);
+  assert.match(page, /defaultValue="0"/);
   assert.match(page, /Непрозрачность слоя/);
   assert.match(page, /−0,5 · сухо/);
   assert.match(globalsCss, /#a50026/);
@@ -167,6 +169,18 @@ test("builds a complete period mosaic by territory", async () => {
     ["clear-period", "fallback-tile"],
   );
   assert.equal(coverageStats(mosaic, boundary).percent, 100);
+
+  const boundedMosaic = mapScenes(
+    periodScenes,
+    new Date("2026-07-10T23:59:59Z"),
+    boundary,
+    20,
+    new Date("2026-06-01T00:00:00Z"),
+  );
+  assert.deepEqual(
+    boundedMosaic.map((item) => item.id).sort(),
+    ["fallback-tile", "near-cloudy"],
+  );
 
   const partialScene = (id, datetime, coordinates) => ({
     ...scene(id, "38AAC", datetime, [44, 45, 46, 47]),

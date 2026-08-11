@@ -70,6 +70,7 @@ const state = {
   districts: null,
   waterBodies: null,
   selectedDistrict: null,
+  selectedStartDate: null,
   selectedDate: null,
   scenes: [],
   map: null,
@@ -371,17 +372,36 @@ function pointInGeometry(point, geometry) {
   return polygons.some((polygon) => pointInPolygon(point, polygon));
 }
 
-function timelineDate() {
+function timelineDateAt(value) {
   const start = new Date(`${element("period-start").value}T00:00:00Z`);
   const end = new Date(`${element("period-end").value}T23:59:59Z`);
-  const progress = Number(element("timeline-range").value) / 100;
+  const progress = Number(value) / 100;
   return new Date(start.getTime() + (end.getTime() - start.getTime()) * progress);
+}
+
+function formatDateWindow(start, end) {
+  return `${formatDate(start)} — ${formatDate(end)}`;
+}
+
+function syncTimelineWindow(changedBoundary) {
+  const startRange = element("timeline-start-range");
+  const endRange = element("timeline-end-range");
+  if (Number(startRange.value) > Number(endRange.value)) {
+    if (changedBoundary === "start") endRange.value = startRange.value;
+    else startRange.value = endRange.value;
+  }
+  state.selectedStartDate = timelineDateAt(startRange.value);
+  state.selectedDate = timelineDateAt(endRange.value);
+  element("timeline-date").textContent = formatDateWindow(
+    state.selectedStartDate,
+    state.selectedDate,
+  );
 }
 
 function updateTimelineLabels() {
   const start = new Date(`${element("period-start").value}T00:00:00Z`);
   const end = new Date(`${element("period-end").value}T23:59:59Z`);
-  const labels = document.querySelectorAll(".timeline > div span");
+  const labels = document.querySelectorAll(".timeline-months span");
   const formatter = new Intl.DateTimeFormat("ru-RU", { month: "long" });
   labels.forEach((label, index) => {
     const progress = index / Math.max(1, labels.length - 1);
@@ -390,9 +410,7 @@ function updateTimelineLabels() {
     );
     label.textContent = formatter.format(date);
   });
-  state.selectedDate = timelineDate();
-  element("timeline-date").textContent =
-    `Мозаика по ${formatDate(state.selectedDate)}`;
+  syncTimelineWindow();
 }
 
 function sceneRank(scene, targetTime, cloudLimit) {
@@ -424,12 +442,19 @@ function mapScenes(
   targetDate = state.selectedDate,
   boundary = state.boundary,
   cloudLimit = state.cloudLimit,
+  startDate = state.selectedStartDate,
 ) {
   const boundaryBox = boundary ? geometryBbox(boundary) : null;
   const targetTime = new Date(targetDate ?? Date.now()).getTime();
-  const candidates = scenes.filter(
-    ({ bbox }) => !boundaryBox || bboxIntersects(bbox, boundaryBox),
-  );
+  const startTime = startDate ? new Date(startDate).getTime() : -Infinity;
+  const candidates = scenes.filter(({ bbox, properties }) => {
+    const sceneTime = new Date(properties.datetime).getTime();
+    return (
+      (!boundaryBox || bboxIntersects(bbox, boundaryBox)) &&
+      sceneTime >= startTime &&
+      sceneTime <= targetTime
+    );
+  });
   const bestByTile = new Map();
   for (const scene of candidates) {
     const tile = mgrsTile(scene);
@@ -710,7 +735,9 @@ function downloadGoogleEarthKml() {
   const name = territoryName(feature);
   const description = [
     "LandMonitor · мониторинг деградации земель",
-    state.selectedDate ? `Дата спутникового среза: ${formatDate(state.selectedDate)}` : null,
+    state.selectedStartDate && state.selectedDate
+      ? `Период спутниковой мозаики: ${formatDateWindow(state.selectedStartDate, state.selectedDate)}`
+      : null,
     `Слой: ${MAP_LAYERS[activeLayer()].label}`,
     "Система координат: WGS 84 (EPSG:4326)",
   ]
@@ -949,7 +976,7 @@ function updateFeatured() {
     satellite: {
       value: "RGB",
       unit: "естественные цвета",
-      note: `${territoryName()} · ${formatDate(state.selectedDate)}`,
+      note: `${territoryName()} · ${formatDateWindow(state.selectedStartDate, state.selectedDate)}`,
     },
     risk: {
       value: `${Math.round(state.metrics.risk)}%`,
@@ -1010,10 +1037,13 @@ function renderResult(
   element("scene-note").textContent =
     `Покрытие ${coverage.percent}% · облачность ${formatIndex(averageCloud)}%`;
   element("scene-caption").textContent =
-    `${territoryName()} · мозаика ${scenes.length} сцен за период · ` +
+    `${territoryName()} · ${formatDateWindow(state.selectedStartDate, selectedDate)} · ` +
+    `${scenes.length} сцен · ` +
     `покрытие ${coverage.percent}%`;
-  element("timeline-date").textContent =
-    `Мозаика по ${formatDate(selectedDate)}`;
+  element("timeline-date").textContent = formatDateWindow(
+    state.selectedStartDate,
+    selectedDate,
+  );
   updateCoverageUi(coverage, scenes);
 
   setStatus(
@@ -1027,9 +1057,15 @@ async function runSelectedAnalysis() {
   state.analysisController?.abort();
   state.analysisController = new AbortController();
   const boundary = state.selectedDistrict ?? state.boundary;
-  const selectedScenes = mapScenes(state.scenes, state.selectedDate, boundary);
+  const selectedScenes = mapScenes(
+    state.scenes,
+    state.selectedDate,
+    boundary,
+    state.cloudLimit,
+    state.selectedStartDate,
+  );
   if (!selectedScenes.length) {
-    throw new Error("Для выбранной территории и даты сцены не найдены.");
+    throw new Error("Для выбранной территории и диапазона сцены не найдены.");
   }
 
   renderSatelliteMap(
@@ -1040,7 +1076,7 @@ async function runSelectedAnalysis() {
   );
   setStatus(
     "Считаем выбранный срез…",
-    `${territoryName()} · ${formatDate(state.selectedDate)}`,
+    `${territoryName()} · ${formatDateWindow(state.selectedStartDate, state.selectedDate)}`,
     "loading",
   );
   const indexes = await calculateIndexes(
@@ -1093,7 +1129,7 @@ async function refresh() {
       state.searchController.signal,
     );
     state.scenes = scenes;
-    state.selectedDate = timelineDate();
+    syncTimelineWindow();
     await runSelectedAnalysis();
   } catch (error) {
     if (error.name === "AbortError") return;
@@ -1158,40 +1194,41 @@ function bindInterface() {
     );
   });
 
-  element("timeline-range")?.addEventListener("input", () => {
-    state.selectedDate = timelineDate();
-    element("timeline-date").textContent =
-      `Мозаика по ${formatDate(state.selectedDate)}`;
-    window.clearTimeout(state.timelineTimer);
-    state.timelineTimer = window.setTimeout(() => {
-      if (state.scenes.length) {
-        renderSatelliteMap(
-          state.scenes,
-          state.selectedDistrict ?? state.boundary,
-          activeLayer(),
-          state.selectedDate,
-        );
-      }
-    }, 180);
-  });
-
-  element("timeline-range")?.addEventListener("change", () => {
-    if (state.scenes.length) {
-      runSelectedAnalysis().catch((error) => {
-        if (error.name !== "AbortError") {
-          setStatus(
-            "Не удалось рассчитать дату",
-            error.message || "Повторите запрос позже",
-            "error",
+  ["timeline-start-range", "timeline-end-range"].forEach((id) => {
+    element(id)?.addEventListener("input", () => {
+      syncTimelineWindow(id === "timeline-start-range" ? "start" : "end");
+      window.clearTimeout(state.timelineTimer);
+      state.timelineTimer = window.setTimeout(() => {
+        if (state.scenes.length) {
+          renderSatelliteMap(
+            state.scenes,
+            state.selectedDistrict ?? state.boundary,
+            activeLayer(),
+            state.selectedDate,
           );
         }
-      });
-    }
+      }, 180);
+    });
+
+    element(id)?.addEventListener("change", () => {
+      if (state.scenes.length) {
+        runSelectedAnalysis().catch((error) => {
+          if (error.name !== "AbortError") {
+            setStatus(
+              "Не удалось рассчитать диапазон",
+              error.message || "Повторите запрос позже",
+              "error",
+            );
+          }
+        });
+      }
+    });
   });
 
   [element("period-start"), element("period-end")].forEach((input) =>
     input?.addEventListener("change", () => {
-      element("timeline-range").value = "100";
+      element("timeline-start-range").value = "0";
+      element("timeline-end-range").value = "100";
       updateTimelineLabels();
     }),
   );

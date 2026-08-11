@@ -37,6 +37,8 @@ test("renders the LandMonitor dashboard", async () => {
   assert.match(html, /territory-select/);
   assert.match(html, /timeline-range/);
   assert.match(html, /Ногайский район/);
+  assert.match(html, /Google Earth/);
+  assert.match(html, /download-earth-kml/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -72,6 +74,8 @@ test("ships project metadata and social preview", async () => {
   assert.match(satelliteData, /runSelectedAnalysis/);
   assert.match(satelliteData, /pointInGeometry/);
   assert.match(satelliteData, /renderWaterBodies/);
+  assert.match(satelliteData, /downloadGoogleEarthKml/);
+  assert.match(satelliteData, /application\/vnd\.google-earth\.kml\+xml/);
   assert.match(satelliteData, /attributionControl\.setPrefix\(false\)/);
   assert.match(satelliteData, /interactive: false,\s+style: districtStyle/);
   assert.doesNotMatch(satelliteData, /state\.map\.on\("click"/);

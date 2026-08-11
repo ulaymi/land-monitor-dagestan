@@ -538,6 +538,96 @@ function territoryName(feature = state.selectedDistrict) {
   return feature?.properties?.name ?? "Вся республика";
 }
 
+function escapeXml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function ringToKml(ring) {
+  return ring.map(([longitude, latitude]) => `${longitude},${latitude},0`).join(" ");
+}
+
+function polygonToKml(rings) {
+  if (!rings?.length) return "";
+  const innerBoundaries = rings
+    .slice(1)
+    .map(
+      (ring) =>
+        `<innerBoundaryIs><LinearRing><coordinates>${ringToKml(ring)}</coordinates></LinearRing></innerBoundaryIs>`,
+    )
+    .join("");
+  return `<Polygon><tessellate>1</tessellate><outerBoundaryIs><LinearRing><coordinates>${ringToKml(rings[0])}</coordinates></LinearRing></outerBoundaryIs>${innerBoundaries}</Polygon>`;
+}
+
+function geometryToKml(geometry) {
+  if (geometry?.type === "Polygon") return polygonToKml(geometry.coordinates);
+  if (geometry?.type === "MultiPolygon") {
+    return `<MultiGeometry>${geometry.coordinates.map(polygonToKml).join("")}</MultiGeometry>`;
+  }
+  throw new Error("Google Earth поддерживает экспорт полигональных территорий.");
+}
+
+function safeFileName(value) {
+  return value
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .replace(/[^a-zа-я0-9]+/gi, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function downloadGoogleEarthKml() {
+  const feature = state.selectedDistrict ?? state.boundary;
+  if (!feature?.geometry) {
+    setStatus(
+      "Контур ещё загружается",
+      "Дождитесь появления карты и повторите экспорт",
+      "loading",
+    );
+    return;
+  }
+
+  const name = territoryName(feature);
+  const description = [
+    "LandMonitor · мониторинг деградации земель",
+    state.selectedDate ? `Дата спутникового среза: ${formatDate(state.selectedDate)}` : null,
+    `Слой: ${MAP_LAYERS[activeLayer()].label}`,
+    "Система координат: WGS 84 (EPSG:4326)",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>${escapeXml(name)}</name>
+    <Style id="landmonitor-area">
+      <LineStyle><color>ff3200ff</color><width>3</width></LineStyle>
+      <PolyStyle><color>303200ff</color></PolyStyle>
+    </Style>
+    <Placemark>
+      <name>${escapeXml(name)}</name>
+      <description>${escapeXml(description)}</description>
+      <styleUrl>#landmonitor-area</styleUrl>
+      ${geometryToKml(feature.geometry)}
+    </Placemark>
+  </Document>
+</kml>`;
+  const url = URL.createObjectURL(
+    new Blob([kml], { type: "application/vnd.google-earth.kml+xml;charset=utf-8" }),
+  );
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `landmonitor-${safeFileName(name) || "dagestan"}.kml`;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+  setStatus("KML подготовлен", `${name} · импортируйте файл в Google Earth`);
+}
+
 function updateTerritoryUi(name) {
   const select = element("territory-select");
   document.querySelector(".map-toolbar h2").textContent = name;
@@ -889,6 +979,10 @@ function bindInterface() {
   setCurrentPeriod();
   updateTimelineLabels();
   element("refresh-satellite-data").addEventListener("click", refresh);
+  element("download-earth-kml")?.addEventListener(
+    "click",
+    downloadGoogleEarthKml,
+  );
 
   document
     .querySelectorAll(".index-options button, .layer-tabs button")

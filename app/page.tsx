@@ -157,6 +157,11 @@ export default function Home() {
   const [cloud, setCloud] = useState(20);
 
   const current = layerMeta[activeLayer];
+  const earthQuery =
+    selectedDistrict === "Вся республика"
+      ? "Республика Дагестан, Россия"
+      : `${selectedDistrict}, Республика Дагестан, Россия`;
+  const googleEarthUrl = `https://earth.google.com/web/search/${encodeURIComponent(earthQuery)}`;
 
   function chooseTerritory(name: string) {
     setSelectedDistrict(name);
@@ -215,6 +220,15 @@ export default function Home() {
           <span className="demo-badge live-data" id="data-mode">
             Реальные спутниковые данные
           </span>
+          <a
+            aria-label={`Открыть ${earthQuery} в Google Earth`}
+            className="earth-button"
+            href={googleEarthUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <span aria-hidden="true">◎</span> Google Earth
+          </a>
           <button className="export-button" type="button">
             <span aria-hidden="true">↓</span> Экспорт отчёта
           </button>
@@ -313,6 +327,21 @@ export default function Home() {
               <b>Источники</b>
               <small>Copernicus Sentinel-2 L2A · Planetary Computer</small>
             </span>
+          </div>
+
+          <div className="earth-integration">
+            <div>
+              <span className="earth-mark" aria-hidden="true">
+                ◎
+              </span>
+              <span>
+                <b>Google Earth</b>
+                <small>Контур выбранной территории в формате KML</small>
+              </span>
+            </div>
+            <button id="download-earth-kml" type="button">
+              Скачать KML
+            </button>
           </div>
 
           <button

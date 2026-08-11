@@ -6,7 +6,7 @@ const ITEM_PREVIEW =
   "https://planetarycomputer.microsoft.com/api/data/v1/item/preview.png";
 const COLLECTION = "sentinel-2-l2a";
 const MAX_STATISTIC_SCENES = 12;
-const MAX_MAP_SCENES = 16;
+const MAX_MAP_SCENES = 32;
 const MAX_SEARCH_SCENES = 1000;
 
 const INDEXES = {
@@ -83,6 +83,7 @@ const state = {
   resizeObserver: null,
   timelineTimer: null,
   syncingTerritory: false,
+  cloudLimit: 20,
 };
 
 function element(id) {
@@ -170,7 +171,7 @@ function bboxArea(bbox = []) {
   return Math.abs((bbox[2] - bbox[0]) * (bbox[3] - bbox[1]));
 }
 
-async function searchScenes(boundary, start, end, cloud, signal) {
+async function searchScenes(boundary, start, end, signal) {
   const response = await fetch(STAC_SEARCH, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -180,7 +181,6 @@ async function searchScenes(boundary, start, end, cloud, signal) {
       datetime: `${start}T00:00:00Z/${end}T23:59:59Z`,
       limit: MAX_SEARCH_SCENES,
       sortby: [{ field: "datetime", direction: "desc" }],
-      query: { "eo:cloud_cover": { lt: Number(cloud) } },
     }),
     signal,
   });
@@ -391,49 +391,152 @@ function updateTimelineLabels() {
     label.textContent = formatter.format(date);
   });
   state.selectedDate = timelineDate();
-  element("timeline-date").textContent = formatDate(state.selectedDate);
+  element("timeline-date").textContent =
+    `Мозаика по ${formatDate(state.selectedDate)}`;
 }
 
-function mapScenes(scenes, targetDate = state.selectedDate, boundary = state.boundary) {
+function sceneRank(scene, targetTime, cloudLimit) {
+  const cloud = Number(scene.properties["eo:cloud_cover"] ?? 100);
+  const distance = Math.abs(
+    new Date(scene.properties.datetime).getTime() - targetTime,
+  );
+  return {
+    preferred: cloud <= cloudLimit,
+    cloud,
+    distance,
+  };
+}
+
+function isBetterScene(candidate, current, targetTime, cloudLimit) {
+  if (!current) return true;
+  const next = sceneRank(candidate, targetTime, cloudLimit);
+  const previous = sceneRank(current, targetTime, cloudLimit);
+  if (next.preferred !== previous.preferred) return next.preferred;
+  if (next.preferred && next.distance !== previous.distance) {
+    return next.distance < previous.distance;
+  }
+  if (next.cloud !== previous.cloud) return next.cloud < previous.cloud;
+  return next.distance < previous.distance;
+}
+
+function mapScenes(
+  scenes,
+  targetDate = state.selectedDate,
+  boundary = state.boundary,
+  cloudLimit = state.cloudLimit,
+) {
   const boundaryBox = boundary ? geometryBbox(boundary) : null;
   const targetTime = new Date(targetDate ?? Date.now()).getTime();
-  const futurePenalty = 365 * 24 * 60 * 60 * 1000;
-  const bestByTile = new Map();
-  for (const scene of scenes.filter(
+  const candidates = scenes.filter(
     ({ bbox }) => !boundaryBox || bboxIntersects(bbox, boundaryBox),
-  )) {
+  );
+  const bestByTile = new Map();
+  for (const scene of candidates) {
     const tile = mgrsTile(scene);
     const current = bestByTile.get(tile);
-    const sceneTime = new Date(scene.properties.datetime).getTime();
-    const currentTime = current
-      ? new Date(current.properties.datetime).getTime()
-      : 0;
-    const distance =
-      sceneTime <= targetTime
-        ? targetTime - sceneTime
-        : sceneTime - targetTime + futurePenalty;
-    const currentDistance = current
-      ? currentTime <= targetTime
-        ? targetTime - currentTime
-        : currentTime - targetTime + futurePenalty
-      : Number.POSITIVE_INFINITY;
-    if (
-      !current ||
-      distance < currentDistance ||
-      (distance === currentDistance &&
-        Number(scene.properties["eo:cloud_cover"] ?? 100) <
-          Number(current.properties["eo:cloud_cover"] ?? 100))
-    ) {
+    if (isBetterScene(scene, current, targetTime, cloudLimit)) {
       bestByTile.set(tile, scene);
     }
   }
-  return [...bestByTile.values()]
+  const mosaic = [...bestByTile.values()];
+  const samplePoints = coverageSamplePoints(boundary, 42);
+  const uncovered = new Set(
+    samplePoints
+      .map((point, index) =>
+        mosaic.some((scene) => sceneCoversPoint(scene, point)) ? null : index,
+      )
+      .filter((index) => index !== null),
+  );
+  const remaining = candidates.filter((scene) => !mosaic.includes(scene));
+
+  while (uncovered.size && mosaic.length < MAX_MAP_SCENES) {
+    let bestCandidate = null;
+    let bestGain = 0;
+    for (const candidate of remaining) {
+      let gain = 0;
+      for (const index of uncovered) {
+        if (sceneCoversPoint(candidate, samplePoints[index])) gain += 1;
+      }
+      if (
+        gain > bestGain ||
+        (gain === bestGain &&
+          gain > 0 &&
+          isBetterScene(candidate, bestCandidate, targetTime, cloudLimit))
+      ) {
+        bestCandidate = candidate;
+        bestGain = gain;
+      }
+    }
+    if (!bestCandidate || !bestGain) break;
+    mosaic.push(bestCandidate);
+    remaining.splice(remaining.indexOf(bestCandidate), 1);
+    for (const index of [...uncovered]) {
+      if (sceneCoversPoint(bestCandidate, samplePoints[index])) {
+        uncovered.delete(index);
+      }
+    }
+  }
+
+  return mosaic
     .sort(
       (first, second) =>
         new Date(second.properties.datetime) -
         new Date(first.properties.datetime),
     )
     .slice(0, MAX_MAP_SCENES);
+}
+
+function sceneCoversPoint(scene, point) {
+  if (scene.geometry) return pointInGeometry(point, scene.geometry);
+  const [west, south, east, north] = scene.bbox ?? [];
+  return (
+    Number.isFinite(west) &&
+    point[0] >= west &&
+    point[0] <= east &&
+    point[1] >= south &&
+    point[1] <= north
+  );
+}
+
+function coverageSamplePoints(boundary, resolution = 42) {
+  if (!boundary?.geometry) return [];
+  const [west, south, east, north] = geometryBbox(boundary);
+  const points = [];
+  for (let row = 0; row < resolution; row += 1) {
+    for (let column = 0; column < resolution; column += 1) {
+      const point = [
+        west + ((column + 0.5) / resolution) * (east - west),
+        south + ((row + 0.5) / resolution) * (north - south),
+      ];
+      if (!pointInGeometry(point, boundary.geometry)) continue;
+      points.push(point);
+    }
+  }
+  return points;
+}
+
+function coverageStats(scenes, boundary, resolution = 42) {
+  const points = coverageSamplePoints(boundary, resolution);
+  if (!points.length || !scenes.length) {
+    return { percent: 0, covered: 0, total: points.length };
+  }
+  const covered = points.filter((point) =>
+    scenes.some((scene) => sceneCoversPoint(scene, point)),
+  ).length;
+  return {
+    percent: Math.round((covered / points.length) * 100),
+    covered,
+    total: points.length,
+  };
+}
+
+function updateCoverageUi(coverage, scenes) {
+  const status = element("coverage-status");
+  const complete = coverage.percent >= 99;
+  const tiles = new Set(scenes.map(mgrsTile)).size;
+  status.textContent =
+    `Покрытие ${coverage.percent}% · ${tiles} тайлов / ${scenes.length} сцен`;
+  status.dataset.state = complete ? "complete" : "partial";
 }
 
 function displayScene(scenes) {
@@ -764,6 +867,7 @@ function renderSatelliteMap(
   const L = globalThis.L;
   const mosaic = mapScenes(scenes, targetDate, boundary);
   if (!mosaic.length) return;
+  updateCoverageUi(coverageStats(mosaic, boundary), mosaic);
   displayScene(mosaic);
 
   state.analysisLayers.forEach((analysisLayer) => analysisLayer.remove());
@@ -874,7 +978,12 @@ function updateFeatured() {
   element("featured-note").textContent = display.note;
 }
 
-function renderResult(scenes, indexes, selectedDate = state.selectedDate) {
+function renderResult(
+  scenes,
+  indexes,
+  selectedDate = state.selectedDate,
+  boundary = state.selectedDistrict ?? state.boundary,
+) {
   const newest = scenes.reduce(
     (latest, scene) =>
       new Date(scene.properties.datetime) > new Date(latest)
@@ -888,6 +997,7 @@ function renderResult(scenes, indexes, selectedDate = state.selectedDate) {
       0,
     ) / scenes.length;
   const risk = calculateRisk(indexes);
+  const coverage = coverageStats(scenes, boundary);
   state.metrics = { ...indexes, risk };
   globalThis.__STEPPE_REAL_METRICS__ = state.metrics;
 
@@ -898,15 +1008,17 @@ function renderResult(scenes, indexes, selectedDate = state.selectedDate) {
     `Агрегировано до ${formatDate(newest)}`;
   element("bsi-note").textContent = `NDMI: ${formatIndex(indexes.ndmi)}`;
   element("scene-note").textContent =
-    `Облачность ${formatIndex(averageCloud)}%`;
+    `Покрытие ${coverage.percent}% · облачность ${formatIndex(averageCloud)}%`;
   element("scene-caption").textContent =
-    `${territoryName()} · ${scenes.length} тайлов · ` +
-    `срез ${formatDate(selectedDate)}`;
-  element("timeline-date").textContent = formatDate(selectedDate);
+    `${territoryName()} · мозаика ${scenes.length} сцен за период · ` +
+    `покрытие ${coverage.percent}%`;
+  element("timeline-date").textContent =
+    `Мозаика по ${formatDate(selectedDate)}`;
+  updateCoverageUi(coverage, scenes);
 
   setStatus(
-    "Срез рассчитан",
-    `${territoryName()} · ${formatDate(selectedDate)}`,
+    "Мозаика собрана",
+    `${territoryName()} · покрытие ${coverage.percent}%`,
   );
   updateFeatured();
 }
@@ -936,7 +1048,7 @@ async function runSelectedAnalysis() {
     boundary,
     state.analysisController.signal,
   );
-  renderResult(selectedScenes, indexes, state.selectedDate);
+  renderResult(selectedScenes, indexes, state.selectedDate, boundary);
 }
 
 async function refresh() {
@@ -971,11 +1083,13 @@ async function refresh() {
         analyze: false,
       });
     }
+    state.cloudLimit = Number(
+      document.querySelector(".control-card input[type=range]").value,
+    );
     const scenes = await searchScenes(
       boundary,
       element("period-start").value,
       element("period-end").value,
-      document.querySelector(".control-card input[type=range]").value,
       state.searchController.signal,
     );
     state.scenes = scenes;
@@ -1046,7 +1160,8 @@ function bindInterface() {
 
   element("timeline-range")?.addEventListener("input", () => {
     state.selectedDate = timelineDate();
-    element("timeline-date").textContent = formatDate(state.selectedDate);
+    element("timeline-date").textContent =
+      `Мозаика по ${formatDate(state.selectedDate)}`;
     window.clearTimeout(state.timelineTimer);
     state.timelineTimer = window.setTimeout(() => {
       if (state.scenes.length) {
@@ -1096,6 +1211,7 @@ export {
   calculateRisk,
   calculateIndexes,
   mapScenes,
+  coverageStats,
   pointInGeometry,
   renderSatelliteMap,
   searchScenes,

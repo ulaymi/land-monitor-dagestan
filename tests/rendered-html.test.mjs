@@ -34,6 +34,8 @@ test("renders the LandMonitor dashboard", async () => {
   assert.match(html, /Республика Дагестан/);
   assert.match(html, /Реальные спутниковые данные/);
   assert.match(html, /Спутник · Sentinel-2 RGB/);
+  assert.match(html, /Покрытие рассчитывается/);
+  assert.match(html, /Мозаика по 30 июля 2026/);
   assert.match(html, /satellite-data\.js/);
   assert.match(html, /territory-select/);
   assert.match(html, /timeline-range/);
@@ -78,6 +80,8 @@ test("ships project metadata and social preview", async () => {
   assert.match(satelliteData, /downloadGoogleEarthKml/);
   assert.match(satelliteData, /Gamma RGB 3\.2 Saturation 0\.8/);
   assert.match(satelliteData, /color_formula/);
+  assert.match(satelliteData, /coverageStats/);
+  assert.match(satelliteData, /Мозаика собрана/);
   assert.match(satelliteData, /application\/vnd\.google-earth\.kml\+xml/);
   assert.match(satelliteData, /attributionControl\.setPrefix\(false\)/);
   assert.match(satelliteData, /interactive: false,\s+style: districtStyle/);
@@ -99,8 +103,8 @@ test("ships project metadata and social preview", async () => {
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 });
 
-test("selects satellite scenes by date and territory", async () => {
-  const { mapScenes, pointInGeometry } = await import(
+test("builds a complete period mosaic by territory", async () => {
+  const { coverageStats, mapScenes, pointInGeometry } = await import(
     new URL("../public/satellite-data.js", import.meta.url)
   );
   const boundary = {
@@ -142,4 +146,45 @@ test("selects satellite scenes by date and territory", async () => {
   );
   assert.equal(pointInGeometry([45, 46], boundary.geometry), true);
   assert.equal(pointInGeometry([50, 50], boundary.geometry), false);
+
+  const periodScenes = [
+    scene("near-cloudy", "38AAA", "2026-07-09T08:00:00Z", [44, 45, 45, 47]),
+    scene("clear-period", "38AAA", "2026-05-01T08:00:00Z", [44, 45, 45, 47]),
+    scene("fallback-tile", "38AAB", "2026-06-15T08:00:00Z", [45, 45, 46, 47]),
+  ];
+  periodScenes[0].properties["eo:cloud_cover"] = 35;
+  periodScenes[1].properties["eo:cloud_cover"] = 8;
+  periodScenes[2].properties["eo:cloud_cover"] = 70;
+
+  const mosaic = mapScenes(
+    periodScenes,
+    new Date("2026-07-10T00:00:00Z"),
+    boundary,
+    20,
+  );
+  assert.deepEqual(
+    mosaic.map((item) => item.id).sort(),
+    ["clear-period", "fallback-tile"],
+  );
+  assert.equal(coverageStats(mosaic, boundary).percent, 100);
+
+  const partialScene = (id, datetime, coordinates) => ({
+    ...scene(id, "38AAC", datetime, [44, 45, 46, 47]),
+    geometry: { type: "Polygon", coordinates: [coordinates] },
+  });
+  const supplemented = mapScenes(
+    [
+      partialScene("left-pass", "2026-07-01T08:00:00Z", [
+        [44, 45], [45, 45], [45, 47], [44, 47], [44, 45],
+      ]),
+      partialScene("right-pass", "2026-06-20T08:00:00Z", [
+        [45, 45], [46, 45], [46, 47], [45, 47], [45, 45],
+      ]),
+    ],
+    new Date("2026-07-10T00:00:00Z"),
+    boundary,
+    20,
+  );
+  assert.equal(supplemented.length, 2);
+  assert.equal(coverageStats(supplemented, boundary).percent, 100);
 });

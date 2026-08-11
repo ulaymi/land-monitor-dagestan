@@ -310,7 +310,7 @@ export default function Home() {
 
           <label className="field">
             <span className="range-label">
-              Допустимая облачность <b>до {cloud}%</b>
+              Целевая облачность <b>до {cloud}%</b>
             </span>
             <input
               className="range"
@@ -325,6 +325,10 @@ export default function Home() {
               <small>25%</small>
               <small>50%</small>
             </span>
+            <small>
+              Для полного покрытия система подбирает лучшую сцену каждого
+              тайла за весь период.
+            </small>
           </label>
 
           <div className="source-note">
@@ -368,17 +372,22 @@ export default function Home() {
               <span className="eyebrow">Интерактивная карта</span>
               <h2>{selectedDistrict}</h2>
             </div>
-            <div className="layer-tabs" aria-label="Слой карты">
-              {(Object.keys(layerMeta) as LayerKey[]).map((key) => (
-                <button
-                  className={activeLayer === key ? "active" : ""}
-                  key={key}
-                  onClick={() => setActiveLayer(key)}
-                  type="button"
-                >
-                  {layerMeta[key].short}
-                </button>
-              ))}
+            <div className="toolbar-controls">
+              <span className="coverage-status" id="coverage-status">
+                Покрытие рассчитывается
+              </span>
+              <div className="layer-tabs" aria-label="Слой карты">
+                {(Object.keys(layerMeta) as LayerKey[]).map((key) => (
+                  <button
+                    className={activeLayer === key ? "active" : ""}
+                    key={key}
+                    onClick={() => setActiveLayer(key)}
+                    type="button"
+                  >
+                    {layerMeta[key].short}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -413,7 +422,7 @@ export default function Home() {
 
             <div className="map-caption">
               <span>WGS 84 · EPSG:4326</span>
-              <span id="scene-caption">Ожидаем сцену Sentinel-2</span>
+              <span id="scene-caption">Собираем мозаику Sentinel-2</span>
             </div>
           </div>
 
@@ -425,14 +434,14 @@ export default function Home() {
               <span>Июль</span>
             </div>
             <input
-              aria-label="Дата отображения"
+              aria-label="Опорная дата мозаики"
               defaultValue="100"
               id="timeline-range"
               max="100"
               min="0"
               type="range"
             />
-            <strong id="timeline-date">30 июля 2026</strong>
+            <strong id="timeline-date">Мозаика по 30 июля 2026</strong>
           </div>
         </section>
 
@@ -475,13 +484,13 @@ export default function Home() {
 
           <article className="metric-card">
             <span className="metric-number">04</span>
-            <span className="metric-label">Сцены в расчёте</span>
+            <span className="metric-label">Сцены мозаики</span>
             <div>
               <strong id="scene-count">—</strong>
-              <small>сцен в расчёте</small>
+              <small>сцен за период</small>
             </div>
             <span className="metric-delta neutral" id="scene-note">
-              поиск по контуру Дагестана
+              проверка покрытия Дагестана
             </span>
           </article>
         </section>

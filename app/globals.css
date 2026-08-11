@@ -589,6 +589,11 @@ p {
   background: var(--orange);
 }
 
+.index-dot.satellite {
+  background: #2687a5;
+  box-shadow: 0 0 0 3px rgba(38, 135, 165, 0.12);
+}
+
 .index-dot.ndvi {
   background: var(--green);
 }
@@ -719,6 +724,8 @@ input[type="range"] {
 
 .layer-tabs {
   display: flex;
+  max-width: 100%;
+  overflow-x: auto;
   padding: 3px;
   border-radius: 6px;
   background: var(--surface-soft);
@@ -726,6 +733,7 @@ input[type="range"] {
 }
 
 .layer-tabs button {
+  flex: 0 0 auto;
   min-height: 29px;
   padding: 0 11px;
   border: 0;
@@ -1186,6 +1194,18 @@ input[type="range"] {
     #f46d43,
     #d73027,
     #a50026
+  );
+}
+
+.legend-gradient.satellite {
+  background: linear-gradient(
+    90deg,
+    #124d6d 0%,
+    #3c8390 22%,
+    #6e8e58 44%,
+    #a98e59 66%,
+    #dad4c5 84%,
+    #ffffff 100%
   );
 }
 

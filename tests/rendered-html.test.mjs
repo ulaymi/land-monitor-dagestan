@@ -33,6 +33,7 @@ test("renders the LandMonitor dashboard", async () => {
   assert.match(html, /Аналитическая панель мониторинга земель/);
   assert.match(html, /Республика Дагестан/);
   assert.match(html, /Реальные спутниковые данные/);
+  assert.match(html, /Спутник · Sentinel-2 RGB/);
   assert.match(html, /satellite-data\.js/);
   assert.match(html, /territory-select/);
   assert.match(html, /timeline-range/);
@@ -75,6 +76,8 @@ test("ships project metadata and social preview", async () => {
   assert.match(satelliteData, /pointInGeometry/);
   assert.match(satelliteData, /renderWaterBodies/);
   assert.match(satelliteData, /downloadGoogleEarthKml/);
+  assert.match(satelliteData, /Gamma RGB 3\.2 Saturation 0\.8/);
+  assert.match(satelliteData, /color_formula/);
   assert.match(satelliteData, /application\/vnd\.google-earth\.kml\+xml/);
   assert.match(satelliteData, /attributionControl\.setPrefix\(false\)/);
   assert.match(satelliteData, /interactive: false,\s+style: districtStyle/);

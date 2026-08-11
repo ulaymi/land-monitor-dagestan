@@ -30,6 +30,11 @@ const RISK_EXPRESSION =
   "+0.25*((((B11+B04)-(B08+B02))/((B11+B04)+(B08+B02))+0.2)/0.7)";
 
 const MAP_LAYERS = {
+  satellite: {
+    assets: ["B04", "B03", "B02"],
+    colorFormula: "Gamma RGB 3.2 Saturation 0.8 Sigmoidal RGB 25 0.35",
+    label: "Естественные цвета · Sentinel-2",
+  },
   risk: {
     assets: ["B02", "B04", "B08", "B11"],
     expression: RISK_EXPRESSION,
@@ -279,7 +284,7 @@ function activeLayer() {
     0,
     buttons.findIndex((button) => button.classList.contains("active")),
   );
-  return ["risk", "ndvi", "bsi", "ndmi"][index];
+  return ["satellite", "risk", "ndvi", "bsi", "ndmi"][index];
 }
 
 function previewUrl(scene, layer) {
@@ -290,10 +295,19 @@ function previewUrl(scene, layer) {
   definition.assets.forEach((asset) =>
     url.searchParams.append("assets", asset),
   );
-  url.searchParams.set("expression", definition.expression);
+  if (definition.expression) {
+    url.searchParams.set("expression", definition.expression);
+  }
   url.searchParams.set("asset_as_band", "true");
-  url.searchParams.set("rescale", definition.rescale);
-  url.searchParams.set("colormap_name", definition.colormap);
+  if (definition.rescale) {
+    url.searchParams.set("rescale", definition.rescale);
+  }
+  if (definition.colormap) {
+    url.searchParams.set("colormap_name", definition.colormap);
+  }
+  if (definition.colorFormula) {
+    url.searchParams.set("color_formula", definition.colorFormula);
+  }
   url.searchParams.set("nodata", "0");
   url.searchParams.set("format", "png");
   url.searchParams.set("max_size", "512");
@@ -828,6 +842,11 @@ function updateFeatured() {
   if (!state.metrics) return;
   const layer = activeLayer();
   const display = {
+    satellite: {
+      value: "RGB",
+      unit: "естественные цвета",
+      note: `${territoryName()} · ${formatDate(state.selectedDate)}`,
+    },
     risk: {
       value: `${Math.round(state.metrics.risk)}%`,
       unit: "модельный индекс риска",

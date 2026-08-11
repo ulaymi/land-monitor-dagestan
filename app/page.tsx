@@ -5,7 +5,7 @@ import { useState } from "react";
 
 const publicBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
-type LayerKey = "risk" | "ndvi" | "soil" | "moisture";
+type LayerKey = "satellite" | "risk" | "ndvi" | "soil" | "moisture";
 
 const layerMeta: Record<
   LayerKey,
@@ -18,6 +18,14 @@ const layerMeta: Record<
     scale: [string, string, string];
   }
 > = {
+  satellite: {
+    label: "Спутник · Sentinel-2 RGB",
+    short: "Спутник",
+    value: "RGB",
+    delta: "без API-ключа",
+    unit: "естественные цвета",
+    scale: ["вода", "суша", "облака"],
+  },
   risk: {
     label: "Комплексный риск",
     short: "Риск",
@@ -280,7 +288,7 @@ export default function Home() {
           </label>
 
           <fieldset className="field">
-            <legend>Индекс мониторинга</legend>
+            <legend>Слой карты и анализа</legend>
             <div className="index-options">
               {(Object.keys(layerMeta) as LayerKey[]).map((key) => (
                 <button

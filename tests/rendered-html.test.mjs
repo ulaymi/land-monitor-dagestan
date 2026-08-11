@@ -30,7 +30,7 @@ test("renders the LandMonitor dashboard", async () => {
 
   const html = await response.text();
   assert.match(html, /LandMonitor/);
-  assert.match(html, /Где земля теряет устойчивость/);
+  assert.match(html, /Аналитическая панель мониторинга земель/);
   assert.match(html, /Республика Дагестан/);
   assert.match(html, /Реальные спутниковые данные/);
   assert.match(html, /satellite-data\.js/);

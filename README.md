@@ -1,5 +1,7 @@
 # LandMonitor Dagestan
 
+**Сайт:** [https://ulaymi.github.io/land-monitor-dagestan/](https://ulaymi.github.io/land-monitor-dagestan/)
+
 Интерактивный веб-прототип мониторинга деградации земель в Республике
 Дагестан. Проект адаптирует архитектуру `Desertification` под географию и
 муниципальное устройство Дагестана.

@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "LandMonitor · Дагестан",
-    description: "Где земля теряет устойчивость.",
+    description: "Аналитическая панель мониторинга земель.",
     images: [socialImage],
   },
 };
